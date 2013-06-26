@@ -1,0 +1,240 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title></title>
+    <script src="Scripts/vendor/jquery-1.9.1.min.js"></script>
+    <script src="Scripts/vendor/datajs-1.0.3.min.js"></script>
+    <script src="Scripts/vendor/jaydata.js"></script>
+    <script src="Scripts/northwind.js"></script>
+    <script src="Scripts/vendor/bootstrap.min.js"></script>
+    <link href="Styles/bootstrap/bootstrap.css" rel="stylesheet" />
+    <link href="Styles/bootstrap/bootstrap-responsive.css" rel="stylesheet" />
+</head>
+<body>
+<table id="categoryTable" class="table span3 reset-m" style="margin: 0 10px 10px 0 !important;">
+    <thead>
+        <tr>
+            <th>Category name</th>
+            <th>Description</th>
+        </tr>
+    </thead>
+    <tbody>
+    </tbody>
+</table>
+
+<table id="productTable" class="table span6 reset-m hide" style="margin: 0 10px 10px 0 !important;">
+    <thead>
+        <tr>
+            <th>Product Name</th>
+            <th>English Name</th>
+            <th>Unit Price</th>
+            <th>Units In Stock</th>
+            <th>Discontinued</th>
+        </tr>
+    </thead>
+    <tbody>
+    </tbody>
+</table>
+
+<div id="editProduct" class="table span3 reset-m noborder_">
+    <div class="well-box hide">
+        <form>
+            <fieldset>
+                <legend class="modal-header">Edit Product</legend>
+
+                <div class="modal-body" style="max-height: 600px;">
+                    <div class="row-fluid">
+                        <div class="span12">
+                            Product name:
+                        <br />
+                            <input type="text" name="Product_Name" />
+                        </div>
+                        <div class="span12">
+                            English Name:
+                        <br />
+                            <input type="text" name="English_Name" />
+                        </div>
+                        <div class="span12">
+                            Unit Price:
+                        <br />
+                            <input type="text" name="Unit_Price" />
+                        </div>
+                        <div class="span12">
+                            Units In Stock:
+                        <br />
+                            <input type="text" name="Units_In_Stock" />
+                        </div>
+                        <div class="span12">
+                            Discontinued:
+                            <input type="checkbox" name="Discontinued" checked />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input type="submit" value="save" class="btn btn-success tshadow" />
+                </div>
+            </fieldset>
+        </form>
+    </div>
+    <div id="saveResult" class="alert alert-success hide">
+        <strong>Success!</strong>
+        <br />
+        Product has been saved successfully.
+    </div>
+</div>
+
+    <script>
+function renderCategories(dataList) {
+    var table = $('#categoryTable tbody');
+    table.empty();
+    dataList.forEach(function (item) {
+        table.append('<tr><td><a onClick="loadProduct(' + item.Category_ID + ')">' +
+            item.Category_Name + '</a></td><td>' + item.Description + '</td></tr>');
+    });
+}
+function loadProduct(categoryId) {
+    northwind.Products
+        .filter(function (product) { return product.Category_ID == this.Id },
+            { Id: categoryId })
+        .toArray(renderProducts);
+}
+function renderProducts(dataList) {
+    $('.well-box').hide();
+    $('#productTable').show();
+    var table = $('#productTable tbody');
+    table.empty();
+    dataList.forEach(function (item) {
+        table.append('<tr><td><a onClick="editProduct(' + item.Product_ID + ')">'
+                            + item.Product_Name + '</a></td>'
+                        + '<td>' + item.English_Name + '</td>'
+                        + '<td>' + item.Unit_Price + '</td>'
+                        + '<td>' + item.Units_In_Stock + '</td>'
+                        + '<td>' + item.Discontinued + '</td></tr>');
+    });
+}
+function editProduct(productId) {
+    northwind.Products
+        .single(function (product) { return product.Product_ID == this.Id }, { Id: productId }, renderEditProduct);
+}
+function renderEditProduct(product) {
+    window.selectedProduct = product;
+    $('form').serializeArray().forEach(function (item) {
+        $('form [name="' + item.name + '"]').val(product[item.name]);
+    });
+    $('form [name="Discontinued"]').prop('checked', product['Discontinued']);
+    $('.well-box').show();
+}
+function saveProduct() {
+    //attach the selected product entity to JayData context
+    northwind.Products.attach(selectedProduct);
+
+    //collect the values from the form and 
+    //modify the properties of our local entity
+    $('form').serializeArray().forEach(function (item) {
+        selectedProduct[item.name] = $('form [name="' + item.name + '"]').val();
+    });
+    selectedProduct.Discontinued = !!$('form [name = "Discontinued"]').is(':checked');
+    //save the modified product to our remote database through OData using JayData 
+    northwind.saveChanges();
+
+    //display a message to the user
+    var result = $('#saveResult');
+    result.show();
+    setTimeout(function () {
+        result.fadeOut("slow");
+    }, 1500);
+    return false;
+}
+$(function () {
+    //configuration attributes of OData provider
+    var oProviderConfig = {
+        name: 'oData',
+        oDataServiceHost: '/examples/Northwind.svc'
+    };
+
+    /*
+    // OPTION 1
+    // managing entities through OData endpoint
+    var northwind = new JayDataExamples.NorthwindDB.NorthwindEntities(oProviderConfig);
+    window['northwind'] = northwind;
+    northwind.onReady(function () {
+        $('form').bind('submit', saveProduct);
+        northwind.Categories.toArray(renderCategories);
+    });
+    // END OF OPTION 1
+    */
+
+    /*
+    // OPTION 2
+    // sync entities from OData datasource to local DB using dynamic model using static model
+    //initialize the Northwind context from the static data model generated by JaySvcUtil.exe
+    var remoteDB = new JayDataExamples.NorthwindDB.NorthwindEntities(oProviderConfig);
+    window['northwindRemote'] = remoteDB;
+
+    remoteDB.onReady(function () {
+        var localDB = new JayDataExamples.NorthwindDB.NorthwindEntities({ name: 'local', databaseName: 'Northwind' });
+        window['northwind'] = localDB;
+
+        $.when(remoteDB.onReady(), localDB.onReady())
+            .then(resetLocal)
+            .then(sync)
+            .then(function () {
+                $('form').bind('submit', saveProduct);
+                northwind.Categories.toArray(renderCategories);
+            });;
+
+        //$('form').bind('submit', saveProduct);
+        //northwind.Categories.toArray(renderCategories);
+    });
+    // END OF OPTION 2
+    */
+
+    // OPTION 3
+    // sync entities from OData datasource to local DB using dynamic model
+    $data.initService('/examples/Northwind.svc').then(function (remoteDB, contextFactory, contexType) {
+        window['northwindRemote'] = remoteDB;
+
+        var localDB = contextFactory({ name: 'local', databaseName: 'Northwind' });
+        window['northwind'] = localDB;
+
+        $.when(remoteDB.onReady(), localDB.onReady())
+            .then(resetLocal)
+            .then(sync)
+            .then(function () {
+                $('form').bind('submit', saveProduct);
+                northwind.Categories.toArray(renderCategories);
+            });;
+
+    });
+    // END OF OPTION 3
+    
+    //clears entities from local database
+    function resetLocal() {
+        var categories = northwind.Categories.toArray();
+        var products = northwind.Products.toArray();
+        return $.when(categories, products)
+                .then(function (categories, products) {
+                    categories.forEach(function (c) { northwind.Categories.remove(c); });
+                    products.forEach(function (p) { northwind.Products.remove(p); });
+                    return northwind.saveChanges();
+                });
+    }
+
+    //sync entities from OData to local database
+    function sync() {
+        var categories = northwindRemote.Categories.toArray();
+        var products = northwindRemote.Products.toArray();
+        return $.when(categories, products)
+                .then(function (categories, products) {
+                    northwind.Categories.addMany(categories);
+                    northwind.Products.addMany(products);
+                    return northwind.saveChanges();
+                })
+                .fail(function (reason) {
+                    console.log(reason);
+                });
+    }
+});
+    </script>
+</body>
+</html>
